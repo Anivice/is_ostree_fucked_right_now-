@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HASH="$(ostree remote summary fedora | grep "$(rpm-ostree status | grep "●" | awk -F':' '{print $2}')" -C 3 | grep -E '\s+[0-9|a-z]+$' | tail -n 1)"; shift || true
+[[ -z "${HASH}" ]] && echo "Failed to get expected hash"
+HASH="$(echo $HASH)"
+[[ "${HASH}" =~ ^[0-9a-f]{64}$ ]] || { echo "Not a SHA-256: ${HASH}"; exit 2; }
+
+OBJ="objects/${HASH:0:2}/${HASH:2}.commit"
+CDN_BASE="$(curl -fsSL https://ostree.fedoraproject.org/mirrorlist | sed 's:/*$::')/ostree/repo"
+KOJI_BASE="https://kojipkgs.fedoraproject.org/ostree/repo"
+
+tmpcdn="$(mktemp)"; tmpkoji="$(mktemp)"
+cleanup(){ /bin/rm -f "$tmpcdn" "$tmpkoji"; }
+trap cleanup EXIT
+
+curl -fsSL "${CDN_BASE}/${OBJ}" -o "$tmpcdn"
+curl -fsSL "${KOJI_BASE}/${OBJ}" -o "$tmpkoji"
+
+cdn_hash="$(sha256sum "$tmpcdn"  | awk '{print $1}')"
+koji_hash="$(sha256sum "$tmpkoji" | awk '{print $1}')"
+
+if [[ "$koji_hash" == "$HASH" && "$cdn_hash" != "$HASH" ]]; then
+    echo -e "\033[31;1m"
+    echo " _______  ______   _          _______           _______  _        _______  ______              _______ "
+    echo "(  ____ \(  __  \ ( (    /|  (  ____ \|\     /|(  ____ \| \    /\(  ____ \(  __  \   |\     /|(  ____ )"
+    echo "| (    \/| (  \  )|  \  ( |  | (    \/| )   ( || (    \/|  \  / /| (    \/| (  \  )  | )   ( || (    )|"
+    echo "| |      | |   ) ||   \ | |  | (__    | |   | || |      |  (_/ / | (__    | |   ) |  | |   | || (____)|"
+    echo "| |      | |   | || (\ \) |  |  __)   | |   | || |      |   _ (  |  __)   | |   | |  | |   | ||  _____)"
+    echo "| |      | |   ) || | \   |  | (      | |   | || |      |  ( \ \ | (      | |   ) |  | |   | || (      "
+    echo "| (____/\| (__/  )| )  \  |  | )      | (___) || (____/\|  /  \ \| (____/\| (__/  )  | (___) || )      "
+    echo "(_______/(______/ |/    )_)  |/       (_______)(_______/|_/    \/(_______/(______/   (_______)|/       "
+    echo -e "\033[0m"
+    echo "Thought rpm-ostree never fail? This is you => 🤡"
+    echo
+    exit 1
+elif [[ "$koji_hash" != "$HASH" && "$cdn_hash" == "$HASH" ]]; then
+    echo "KOJI bad, CDN good  (koji=${koji_hash})"
+    exit 1
+elif [[ "$koji_hash" == "$HASH" && "$cdn_hash" == "$HASH" ]]; then
+    echo "both good"
+    exit 0
+else
+    echo "both unexpected: CDN=${cdn_hash}, KOJI=${koji_hash}, expected=${HASH}, double fucked????? 🤡🤡🤡🤡"
+    exit 1
+fi
+
