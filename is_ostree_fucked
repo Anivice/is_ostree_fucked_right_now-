@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-HASH="$(ostree remote summary fedora | grep "$(rpm-ostree status | grep "●" | awk -F':' '{print $2}')" -C 3 | grep -E '\s+[0-9|a-z]+$' | tail -n 1)"; shift || true
+HASH="$(ostree remote summary fedora | grep "$(rpm-ostree status | grep "●" | awk -F':' '{print $2}')" -C 3 | grep -E '\s+[0-9|a-z]+$' | tail -n 1)";
 [[ -z "${HASH}" ]] && echo "Failed to get expected hash"
 HASH="$(echo $HASH)"
 [[ "${HASH}" =~ ^[0-9a-f]{64}$ ]] || { echo "Not a SHA-256: ${HASH}"; exit 2; }
 
 OBJ="objects/${HASH:0:2}/${HASH:2}.commit"
-CDN_BASE="$(curl -fsSL https://ostree.fedoraproject.org/mirrorlist | sed 's:/*$::')/ostree/repo"
+CDN_BASE="$(curl -fsSL https://ostree.fedoraproject.org/mirrorlist | sed 's:/*$::')/"
 KOJI_BASE="https://kojipkgs.fedoraproject.org/ostree/repo"
 
 tmpcdn="$(mktemp)"; tmpkoji="$(mktemp)"
@@ -44,4 +44,3 @@ else
     echo "both unexpected: CDN=${cdn_hash}, KOJI=${koji_hash}, expected=${HASH}, double fucked????? 🤡🤡🤡🤡"
     exit 1
 fi
-
